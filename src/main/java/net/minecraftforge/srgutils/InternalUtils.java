@@ -33,11 +33,19 @@ class InternalUtils {
     private static final List<String> ORDER = Arrays.asList("PK:", "CL:", "FD:", "MD:");
 
     static IMappingFile load(InputStream in) throws IOException {
-        INamedMappingFile named = loadNamed(in);
+        return load(in, false);
+    }
+
+    static IMappingFile load(InputStream in, boolean reverseClass) throws IOException {
+        INamedMappingFile named = loadNamed(in, reverseClass);
         return named.getMap(named.getNames().get(0), named.getNames().get(1));
     }
 
     static INamedMappingFile loadNamed(InputStream in) throws IOException {
+        return loadNamed(in, false);
+    }
+
+    static INamedMappingFile loadNamed(InputStream in, boolean reverseClass) throws IOException {
         List<String> lines = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)).lines()
                 .map(InternalUtils::stripComment)
                 .filter(l -> !l.isEmpty()) //Remove Empty lines
@@ -58,11 +66,7 @@ class InternalUtils {
         else if (firstLine.startsWith("tsrg2 ")) // TSRG v2, parameters, and multi-names
             return loadTSrg2(lines).build();
         else { // TSRG/CSRG
-            final Optional<String[]> split = lines.stream()
-                    .filter(e -> e.chars().filter(c -> c == ' ').count() == 1)
-                    .findFirst()
-                    .map(e -> e.split(" "));
-            return loadSlimSRG(lines, split.isPresent() && split.get()[1].contains("/")).build();
+            return loadSlimSRG(lines, reverseClass).build();
         }
     }
 

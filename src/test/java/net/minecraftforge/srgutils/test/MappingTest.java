@@ -92,7 +92,7 @@ public class MappingTest {
                 "https://hub.spigotmc.org/stash/projects/SPIGOT/repos/builddata/raw/mappings/bukkit-1.17.1-cl.csrg?at=a4785704979a469daa2b7f6826c84e7fe886bb03"
         );
         try {
-            IMappingFile.load(mergedCsrg);
+            IMappingFile.load(mergedCsrg, true);
         } catch (IOException e) {
             Assertions.fail(e);
         }

@@ -29,20 +29,36 @@ import java.util.Map;
 
 public interface IMappingFile {
     static IMappingFile load(File path) throws IOException {
+        return load(path, false);
+    }
+
+    static IMappingFile load(File path, boolean reverseClass) throws IOException {
         try (InputStream in = new FileInputStream(path)) {
-            return load(in);
+            return load(in, reverseClass);
         }
     }
 
     static IMappingFile load(InputStream in) throws IOException {
-        return InternalUtils.load(in);
+        return load(in, false);
+    }
+
+    static IMappingFile load(InputStream in, boolean reverseClass) throws IOException {
+        return InternalUtils.load(in, reverseClass);
     }
 
     static IMappingFile load(String mappingFile) throws IOException {
-        return load(new ByteArrayInputStream(mappingFile.getBytes(StandardCharsets.UTF_8)));
+        return load(mappingFile, false);
+    }
+
+    static IMappingFile load(String mappingFile, boolean reverseClass) throws IOException {
+        return load(new ByteArrayInputStream(mappingFile.getBytes(StandardCharsets.UTF_8)), reverseClass);
     }
 
     static IMappingFile load(String[] mappingFile) throws IOException {
+        return load(mappingFile, false);
+    }
+
+    static IMappingFile load(String[] mappingFile, boolean reverseClass) throws IOException {
         return load(String.join("\n", mappingFile));
     }
 
