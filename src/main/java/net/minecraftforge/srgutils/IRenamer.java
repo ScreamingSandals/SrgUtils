@@ -19,11 +19,7 @@
 
 package net.minecraftforge.srgutils;
 
-import net.minecraftforge.srgutils.IMappingFile.IClass;
-import net.minecraftforge.srgutils.IMappingFile.IField;
-import net.minecraftforge.srgutils.IMappingFile.IMethod;
-import net.minecraftforge.srgutils.IMappingFile.IPackage;
-import net.minecraftforge.srgutils.IMappingFile.IParameter;
+import net.minecraftforge.srgutils.IMappingFile.*;
 
 public interface IRenamer {
     default String rename(IPackage value) {

@@ -19,36 +19,28 @@
 
 package net.minecraftforge.srgutils;
 
+import net.minecraftforge.srgutils.IMappingFile.Format;
+
+import javax.annotation.Nullable;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.stream.Stream;
 
-import javax.annotation.Nullable;
-
-import net.minecraftforge.srgutils.IMappingFile.Format;
-
 import static net.minecraftforge.srgutils.IMappingFile.Format.*;
 import static net.minecraftforge.srgutils.InternalUtils.Element.*;
-import static net.minecraftforge.srgutils.InternalUtils.*;
+import static net.minecraftforge.srgutils.InternalUtils.writeMeta;
 
 class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
     private final List<String> names;
-    private Map<String, Package> packages = new HashMap<>();
-    private Map<String, Cls> classes = new HashMap<>();
-    private Map<String, String[]> classCache = new ConcurrentHashMap<>();
-    private Map<String, IMappingFile> mapCache = new ConcurrentHashMap<>(); //TODO: Weak?
+    private final Map<String, Package> packages = new HashMap<>();
+    private final Map<String, Cls> classes = new HashMap<>();
+    private final Map<String, String[]> classCache = new ConcurrentHashMap<>();
+    private final Map<String, IMappingFile> mapCache = new ConcurrentHashMap<>(); //TODO: Weak?
 
     NamedMappingFile(String... names) {
         if (names == null || names.length < 2)
@@ -56,9 +48,16 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
         this.names = Collections.unmodifiableList(Arrays.asList(names));
     }
 
+    // Internal Utilities
+    private static <K, V> V retPut(Map<K, V> map, K key, V value) {
+        map.put(key, value);
+        return value;
+    }
+
     private void ensureCount(String... names) {
         if (names == null) throw new IllegalArgumentException("Names can not be null");
-        if (names.length != this.names.size()) throw new IllegalArgumentException("Invalid number of names, expected " + this.names.size() + " got " + names.length);
+        if (names.length != this.names.size())
+            throw new IllegalArgumentException("Invalid number of names, expected " + this.names.size() + " got " + names.length);
     }
 
     @Override
@@ -84,7 +83,7 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
             throw new IllegalArgumentException("Invalid order, you must specify atleast 2 names");
 
         if (!format.hasNames() && order.length > 2)
-            throw new IllegalArgumentException("Can not write " + order + " in " + format.name() + " format, it does not support headers");
+            throw new IllegalArgumentException("Can not write " + Arrays.toString(order) + " in " + format.name() + " format, it does not support headers");
 
         int[] indexes = new int[order.length];
         for (int x = 0; x < order.length; x++) {
@@ -95,7 +94,7 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
 
 
         List<String> lines = new ArrayList<>();
-        Comparator<Named> sort = (a,b) -> a.getName(indexes[0]).compareTo(b.getName(indexes[0]));
+        Comparator<Named> sort = Comparator.comparing(a -> a.getName(indexes[0]));
 
         getPackages().sorted(sort).forEachOrdered(pkg -> {
             lines.add(pkg.write(format, indexes));
@@ -114,18 +113,18 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
                 lines.add(mtd.write(format, indexes));
                 writeMeta(format, lines, METHOD, mtd.meta);
 
-                mtd.getParameters().sorted((a,b) -> a.getIndex() - b.getIndex()).forEachOrdered(par -> {
+                mtd.getParameters().sorted(Comparator.comparingInt(Cls.Method.Parameter::getIndex)).forEachOrdered(par -> {
                     lines.add(par.write(format, indexes));
                     writeMeta(format, lines, PARAMETER, par.meta);
                 });
             });
         });
 
-        lines.removeIf(e -> e == null);
+        lines.removeIf(Objects::isNull);
 
         if (!format.isOrdered()) {
-            Comparator<String> linesort = (format == SRG || format == XSRG) ? InternalUtils::compareLines : (o1, o2) -> o1.compareTo(o2);
-            Collections.sort(lines, linesort);
+            Comparator<String> linesort = (format == SRG || format == XSRG) ? InternalUtils::compareLines : Comparator.naturalOrder();
+            lines.sort(linesort);
         }
 
         if (format == TINY1 || format == TINY) {
@@ -151,12 +150,6 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
         }
     }
 
-    // Internal Utilities
-    private static <K, V> V retPut(Map<K, V> map, K key, V value) {
-        map.put(key, value);
-        return value;
-    }
-
     private String remapClass(int index, String cls) {
         String[] ret = remapClass(cls);
         return ret[ret.length == 1 ? 0 : index];
@@ -174,7 +167,7 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
                     for (int x = 0; x < ret.length; x++)
                         ret[x] = parent[x] + '$' + cls.substring(idx + 1);
                 } else
-                    ret = new String[]{ cls };
+                    ret = new String[]{cls};
             } else
                 ret = _cls.getNames();
             classCache.put(cls, ret);
@@ -223,7 +216,7 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
         return this.classes.get(name);
     }
 
-    abstract class Named {
+    abstract static class Named {
         private final String[] names;
 
         Named(String... names) {
@@ -259,14 +252,19 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
         String write(Format format, int... order) {
             switch (format) {
                 case SRG:
-                case XSRG: return "PK: " + getName(order[0]) + ' ' + getName(order[1]);
+                case XSRG:
+                    return "PK: " + getName(order[0]) + ' ' + getName(order[1]);
                 case CSRG:
-                case TSRG: return getName(order[0]) + "/ " + getName(order[1]) + '/';
-                case TSRG2: return getTsrg2(order);
+                case TSRG:
+                    return getName(order[0]) + "/ " + getName(order[1]) + '/';
+                case TSRG2:
+                    return getTsrg2(order);
                 case PG:
                 case TINY1:
-                case TINY: return null;
-                default: throw new UnsupportedOperationException("Unknown format: " + format);
+                case TINY:
+                    return null;
+                default:
+                    throw new UnsupportedOperationException("Unknown format: " + format);
             }
         }
 
@@ -293,9 +291,9 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
     }
 
     class Cls extends Named implements IMappingBuilder.IClass {
+        final Map<String, String> meta = new LinkedHashMap<>();
         private final Map<String, Field> fields = new HashMap<>();
         private final Map<String, Method> methods = new HashMap<>();
-        final Map<String, String> meta = new LinkedHashMap<>();
 
         Cls(String... name) {
             super(name);
@@ -336,14 +334,21 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
         String write(Format format, int... order) {
             switch (format) {
                 case SRG:
-                case XSRG:  return "CL: " + getName(order[0]) + ' ' + getName(order[1]);
+                case XSRG:
+                    return "CL: " + getName(order[0]) + ' ' + getName(order[1]);
                 case CSRG:
-                case TSRG:  return getName(order[0]) + ' ' + getName(order[1]);
-                case TSRG2: return getTsrg2(order);
-                case PG:    return getName(order[0]).replace('/', '.') + " -> " + getName(order[1]).replace('/', '.') + ':';
-                case TINY1: return "CLASS" + getNames(order);
-                case TINY:  return "c" + getNames(order);
-                default: throw new UnsupportedOperationException("Unknown format: " + format);
+                case TSRG:
+                    return getName(order[0]) + ' ' + getName(order[1]);
+                case TSRG2:
+                    return getTsrg2(order);
+                case PG:
+                    return getName(order[0]).replace('/', '.') + " -> " + getName(order[1]).replace('/', '.') + ':';
+                case TINY1:
+                    return "CLASS" + getNames(order);
+                case TINY:
+                    return "c" + getNames(order);
+                default:
+                    throw new UnsupportedOperationException("Unknown format: " + format);
             }
         }
 
@@ -358,9 +363,9 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
         }
 
         class Field extends Named implements IMappingBuilder.IField {
+            final Map<String, String> meta = new LinkedHashMap<>();
             @Nullable
             private String desc;
-            final Map<String, String> meta = new LinkedHashMap<>();
 
             Field(String... names) {
                 super(names);
@@ -390,15 +395,24 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
             @Override
             String write(Format format, int... order) {
                 switch (format) {
-                    case SRG:   return "FD: " + Cls.this.getName(order[0]) + '/' + getName(order[0]) + ' ' + Cls.this.getName(order[1]) + '/' + getName(order[1]) + (this.desc == null ? "" : getDescriptor(order[0]) + ' ' + getDescriptor(order[1]));
-                    case XSRG:  return "FD: " + Cls.this.getName(order[0]) + '/' + getName(order[0]) + (this.desc == null ? "" : getDescriptor(order[0])) + ' ' + Cls.this.getName(order[1]) + '/' + getName(order[1]) + (this.desc == null ? "" : getDescriptor(order[1]));
-                    case CSRG:  return Cls.this.getName(order[0]) + ' ' + getName(order[0]) + ' ' + getName(order[1]);
-                    case TSRG:  return '\t' + getName(order[0]) + ' ' + getName(order[1]);
-                    case TSRG2: return getTsrg2(order);
-                    case PG:    return "    " + InternalUtils.toSource(getDescriptor(order[0])) + ' ' + getName(order[0]) + " -> " + getName(order[1]);
-                    case TINY1: return "FIELD" + getNames(order);
-                    case TINY:  return "\tf\t" + getDescriptor(order[0]) + getNames(order);
-                    default: throw new UnsupportedOperationException("Unknown format: " + format);
+                    case SRG:
+                        return "FD: " + Cls.this.getName(order[0]) + '/' + getName(order[0]) + ' ' + Cls.this.getName(order[1]) + '/' + getName(order[1]) + (this.desc == null ? "" : getDescriptor(order[0]) + ' ' + getDescriptor(order[1]));
+                    case XSRG:
+                        return "FD: " + Cls.this.getName(order[0]) + '/' + getName(order[0]) + (this.desc == null ? "" : getDescriptor(order[0])) + ' ' + Cls.this.getName(order[1]) + '/' + getName(order[1]) + (this.desc == null ? "" : getDescriptor(order[1]));
+                    case CSRG:
+                        return Cls.this.getName(order[0]) + ' ' + getName(order[0]) + ' ' + getName(order[1]);
+                    case TSRG:
+                        return '\t' + getName(order[0]) + ' ' + getName(order[1]);
+                    case TSRG2:
+                        return getTsrg2(order);
+                    case PG:
+                        return "    " + InternalUtils.toSource(getDescriptor(order[0])) + ' ' + getName(order[0]) + " -> " + getName(order[1]);
+                    case TINY1:
+                        return "FIELD" + getNames(order);
+                    case TINY:
+                        return "\tf\t" + getDescriptor(order[0]) + getNames(order);
+                    default:
+                        throw new UnsupportedOperationException("Unknown format: " + format);
                 }
             }
 
@@ -416,9 +430,9 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
         }
 
         class Method extends Named implements IMappingBuilder.IMethod {
+            final Map<String, String> meta = new LinkedHashMap<>();
             private final String desc;
             private final Map<Integer, Parameter> params = new HashMap<>();
-            final Map<String, String> meta = new LinkedHashMap<>();
 
             Method(String desc, String... names) {
                 super(names);
@@ -459,17 +473,24 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
 
                 switch (format) {
                     case SRG:
-                    case XSRG: return "MD: " + oOwner + '/' + oName + ' ' + oDesc + ' ' + Cls.this.getName(order[1]) + '/' + mName + ' ' + getDescriptor(order[1]);
-                    case CSRG: return oOwner + ' ' + oName + ' ' + oDesc + ' ' + mName;
-                    case TSRG: return '\t' + oName + ' ' + oDesc + ' ' + mName;
-                    case TSRG2: return getTsrg2(order);
-                    case TINY1: return "METHOD\t" + oOwner + '\t' + oDesc + getNames(order);
-                    case TINY: return "\tm\t" + oDesc + getNames(order);
+                    case XSRG:
+                        return "MD: " + oOwner + '/' + oName + ' ' + oDesc + ' ' + Cls.this.getName(order[1]) + '/' + mName + ' ' + getDescriptor(order[1]);
+                    case CSRG:
+                        return oOwner + ' ' + oName + ' ' + oDesc + ' ' + mName;
+                    case TSRG:
+                        return '\t' + oName + ' ' + oDesc + ' ' + mName;
+                    case TSRG2:
+                        return getTsrg2(order);
+                    case TINY1:
+                        return "METHOD\t" + oOwner + '\t' + oDesc + getNames(order);
+                    case TINY:
+                        return "\tm\t" + oDesc + getNames(order);
                     case PG:
                         int start = Integer.parseInt(meta.getOrDefault("start_line", "0"));
                         int end = Integer.parseInt(meta.getOrDefault("end_line", "0"));
                         return "    " + (start == 0 && end == 0 ? "" : start + ":" + end + ":") + InternalUtils.toSource(oName, oDesc) + " -> " + mName;
-                    default: throw new UnsupportedOperationException("Unknown format: " + format);
+                    default:
+                        throw new UnsupportedOperationException("Unknown format: " + format);
                 }
             }
 
@@ -486,8 +507,8 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
             }
 
             class Parameter extends Named implements IMappingBuilder.IParameter {
-                private final int index;
                 final Map<String, String> meta = new LinkedHashMap<>();
+                private final int index;
 
                 Parameter(int index, String... names) {
                     super(names);
@@ -506,16 +527,20 @@ class NamedMappingFile implements INamedMappingFile, IMappingBuilder {
                         case CSRG:
                         case TSRG:
                         case PG:
-                        case TINY1: return null;
-                        case TINY: return "\t\tp\t" + getIndex() + getNames(order);
-                        case TSRG2: return getTsrg2(order);
-                        default: throw new UnsupportedOperationException("Unknown format: " + format);
+                        case TINY1:
+                            return null;
+                        case TINY:
+                            return "\t\tp\t" + getIndex() + getNames(order);
+                        case TSRG2:
+                            return getTsrg2(order);
+                        default:
+                            throw new UnsupportedOperationException("Unknown format: " + format);
                     }
                 }
 
                 private String getTsrg2(int... order) {
                     StringBuilder ret = new StringBuilder()
-                        .append("\t\t").append(getIndex());
+                            .append("\t\t").append(getIndex());
                     for (int x = 0; x < order.length; x++)
                         ret.append(' ').append(getName(x));
                     return ret.toString();

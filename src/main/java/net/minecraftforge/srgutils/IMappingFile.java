@@ -19,47 +19,81 @@
 
 package net.minecraftforge.srgutils;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import javax.annotation.Nullable;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Locale;
 import java.util.Map;
 
-import javax.annotation.Nullable;
-
 public interface IMappingFile {
-    public static IMappingFile load(File path) throws IOException {
+    static IMappingFile load(File path) throws IOException {
         try (InputStream in = new FileInputStream(path)) {
             return load(in);
         }
     }
 
-    public static IMappingFile load(InputStream in) throws IOException {
+    static IMappingFile load(InputStream in) throws IOException {
         return InternalUtils.load(in);
     }
 
-    public enum Format {
-        SRG  (false, false, false),
-        XSRG (false, true,  false),
-        CSRG (false, false, false),
-        TSRG (true,  false, false),
-        TSRG2(true,  true,  true ),
-        PG   (true,  true,  false),
-        TINY1(false, true,  true ),
-        TINY (true,  true,  false)
-        ;
+    static IMappingFile load(String mappingFile) throws IOException {
+        return load(new ByteArrayInputStream(mappingFile.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    static IMappingFile load(String[] mappingFile) throws IOException {
+        return load(String.join("\n", mappingFile));
+    }
+
+    Collection<? extends IPackage> getPackages();
+
+    IPackage getPackage(String original);
+
+    Collection<? extends IClass> getClasses();
+
+    IClass getClass(String original);
+
+    String remapPackage(String pkg);
+
+    String remapClass(String desc);
+
+    String remapDescriptor(String desc);
+
+    void write(Path path, Format format, boolean reversed) throws IOException;
+
+    IMappingFile reverse();
+
+    IMappingFile rename(IRenamer renamer);
+
+    IMappingFile chain(IMappingFile other);
+
+    enum Format {
+        SRG(false, false, false),
+        XSRG(false, true, false),
+        CSRG(false, false, false),
+        TSRG(true, false, false),
+        TSRG2(true, true, true),
+        PG(true, true, false),
+        TINY1(false, true, true),
+        TINY(true, true, false);
 
         private final boolean ordered;
         private final boolean hasFieldTypes;
         private final boolean hasNames;
 
-        private Format(boolean ordered, boolean hasFieldTypes, boolean hasNames) {
+        Format(boolean ordered, boolean hasFieldTypes, boolean hasNames) {
             this.ordered = ordered;
             this.hasFieldTypes = hasFieldTypes;
             this.hasNames = hasNames;
+        }
+
+        public static Format get(String name) {
+            name = name.toUpperCase(Locale.ENGLISH);
+            for (Format value : values())
+                if (value.name().equals(name))
+                    return value;
+            return null;
         }
 
         public boolean isOrdered() {
@@ -73,35 +107,13 @@ public interface IMappingFile {
         public boolean hasNames() {
             return this.hasNames;
         }
-
-        public static Format get(String name) {
-            name = name.toUpperCase(Locale.ENGLISH);
-            for (Format value : values())
-                if (value.name().equals(name))
-                    return value;
-            return null;
-        }
     }
 
-    Collection<? extends IPackage> getPackages();
-    IPackage getPackage(String original);
-
-    Collection<? extends IClass> getClasses();
-    IClass getClass(String original);
-
-    String remapPackage(String pkg);
-    String remapClass(String desc);
-    String remapDescriptor(String desc);
-
-    void write(Path path, Format format, boolean reversed) throws IOException;
-
-    IMappingFile reverse();
-    IMappingFile rename(IRenamer renamer);
-    IMappingFile chain(IMappingFile other);
-
-    public interface INode {
+    interface INode {
         String getOriginal();
+
         String getMapped();
+
         @Nullable // Returns null if the specified format doesn't support this node type
         String write(Format format, boolean reversed);
 
@@ -121,40 +133,48 @@ public interface IMappingFile {
         Map<String, String> getMetadata();
     }
 
-    public interface IPackage extends INode {}
+    interface IPackage extends INode {
+    }
 
-    public interface IClass extends INode {
+    interface IClass extends INode {
         Collection<? extends IField> getFields();
+
         Collection<? extends IMethod> getMethods();
 
         String remapField(String field);
+
         String remapMethod(String name, String desc);
 
         @Nullable
         IField getField(String name);
+
         @Nullable
         IMethod getMethod(String name, String desc);
     }
 
-    public interface IOwnedNode<T> extends INode {
+    interface IOwnedNode<T> extends INode {
         T getParent();
     }
 
-    public interface IField extends IOwnedNode<IClass> {
+    interface IField extends IOwnedNode<IClass> {
         @Nullable
         String getDescriptor();
+
         @Nullable
         String getMappedDescriptor();
     }
 
-    public interface IMethod extends IOwnedNode<IClass> {
+    interface IMethod extends IOwnedNode<IClass> {
         String getDescriptor();
+
         String getMappedDescriptor();
+
         Collection<? extends IParameter> getParameters();
+
         String remapParameter(int index, String name);
     }
 
-    public interface IParameter extends IOwnedNode<IMethod> {
+    interface IParameter extends IOwnedNode<IMethod> {
         int getIndex();
     }
 }

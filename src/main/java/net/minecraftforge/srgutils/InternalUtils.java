@@ -19,25 +19,19 @@
 
 package net.minecraftforge.srgutils;
 
+import net.minecraftforge.srgutils.IMappingFile.Format;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
-import net.minecraftforge.srgutils.IMappingFile.Format;
-
 class InternalUtils {
+    private static final List<String> ORDER = Arrays.asList("PK:", "CL:", "FD:", "MD:");
+
     static IMappingFile load(InputStream in) throws IOException {
         INamedMappingFile named = loadNamed(in);
         return named.getMap(named.getNames().get(0), named.getNames().get(1));
@@ -45,35 +39,31 @@ class InternalUtils {
 
     static INamedMappingFile loadNamed(InputStream in) throws IOException {
         List<String> lines = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)).lines()
-            //.map(InternalUtils::stripComment)
-            .filter(l -> !l.isEmpty()) //Remove Empty lines
-            .collect(Collectors.toList());
+                .map(InternalUtils::stripComment)
+                .filter(l -> !l.isEmpty()) //Remove Empty lines
+                .collect(Collectors.toList());
 
 
         String firstLine = lines.get(0);
-        Iterator<String> itr = lines.iterator();
-        while (stripComment(firstLine).isEmpty() && itr.hasNext())
-            firstLine = itr.next();
         String test = firstLine.split(" ")[0];
 
         if ("PK:".equals(test) || "CL:".equals(test) || "FD:".equals(test) || "MD:".equals(test)) //SRG
-            return loadSRG(filter(lines)).build();
-        else if(firstLine.contains(" -> ")) // ProGuard
-            return loadProguard(filter(lines)).build();
+            return loadSRG(lines).build();
+        else if (firstLine.contains(" -> ")) // ProGuard
+            return loadProguard(lines).build();
         else if (firstLine.startsWith("v1\t")) // Tiny V1
             return loadTinyV1(lines).build();
         else if (firstLine.startsWith("tiny\t")) // Tiny V2+
             return loadTinyV2(lines).build();
         else if (firstLine.startsWith("tsrg2 ")) // TSRG v2, parameters, and multi-names
             return loadTSrg2(lines).build();
-        else // TSRG/CSRG
-            return loadSlimSRG(filter(lines)).build();
-    }
-
-    private static List<String> filter(List<String> lines) {
-        return lines.stream().map(InternalUtils::stripComment)
-        .filter(l -> !l.isEmpty()) //Remove Empty lines
-        .collect(Collectors.toList());
+        else { // TSRG/CSRG
+            final Optional<String[]> split = lines.stream()
+                    .filter(e -> e.chars().filter(c -> c == ' ').count() == 1)
+                    .findFirst()
+                    .map(e -> e.split(" "));
+            return loadSlimSRG(lines, split.isPresent() && split.get()[1].contains("/")).build();
+        }
     }
 
     private static IMappingBuilder loadSRG(List<String> lines) throws IOException {
@@ -82,23 +72,26 @@ class InternalUtils {
         for (String line : lines) {
             String[] pts = line.split(" ");
             switch (pts[0]) {
-                case "PK:": ret.addPackage(pts[1], pts[2]); break;
-                case "CL:": classes.put(pts[1], ret.addClass(pts[1], pts[2])); break;
+                case "PK:":
+                    ret.addPackage(pts[1], pts[2]);
+                    break;
+                case "CL:":
+                    classes.put(pts[1], ret.addClass(pts[1], pts[2]));
+                    break;
                 case "FD:":
+                    String[] left = rsplit(pts[1], '/', 1);
+                    String[] right;
                     if (pts.length == 5) {
-                        String[] left = rsplit(pts[1], '/', 1);
-                        String[] right = rsplit(pts[3], '/', 1);
-                        classes.computeIfAbsent(left[0], k -> ret.addClass(left[0], right[0])).field(left[1], right[1]).descriptor(pts[2]);
+                        right = rsplit(pts[3], '/', 1);
                     } else {
-                        String[] left = rsplit(pts[1], '/', 1);
-                        String[] right = rsplit(pts[2], '/', 1);
-                        classes.computeIfAbsent(left[0], k -> ret.addClass(left[0], right[0])).field(left[1], right[1]).descriptor(pts[2]);
+                        right = rsplit(pts[2], '/', 1);
                     }
+                    classes.computeIfAbsent(left[0], k -> ret.addClass(left[0], right[0])).field(left[1], right[1]).descriptor(pts[2]);
                     break;
                 case "MD:":
-                    String[] left = rsplit(pts[1], '/', 1);
-                    String[] right = rsplit(pts[3], '/', 1);
-                    classes.computeIfAbsent(left[0], k -> ret.addClass(left[0], right[0])).method(pts[2], left[1], right[1]);
+                    String[] left1 = rsplit(pts[1], '/', 1);
+                    String[] right1 = rsplit(pts[3], '/', 1);
+                    classes.computeIfAbsent(left1[0], k -> ret.addClass(left1[0], right1[0])).method(pts[2], left1[1], right1[1]);
                     break;
                 default:
                     throw new IOException("Invalid SRG file, Unknown type: " + line);
@@ -126,8 +119,8 @@ class InternalUtils {
                 if (line.indexOf(':') != -1) {
                     int i = line.indexOf(':');
                     int j = line.indexOf(':', i + 1);
-                    start = Integer.parseInt(line.substring(0,     i));
-                    end   = Integer.parseInt(line.substring(i + 1, j));
+                    start = Integer.parseInt(line.substring(0, i));
+                    end = Integer.parseInt(line.substring(i + 1, j));
                     line = line.substring(j + 1);
                 }
 
@@ -136,7 +129,7 @@ class InternalUtils {
                 String name = line.substring(line.indexOf(' ') + 1, line.indexOf('('));
                 String[] args = line.substring(line.indexOf('(') + 1, line.indexOf(')')).split(",");
 
-                StringBuffer desc = new StringBuffer();
+                StringBuilder desc = new StringBuilder();
                 desc.append('(');
                 for (String arg : args) {
                     if (arg.isEmpty()) break;
@@ -145,7 +138,7 @@ class InternalUtils {
                 desc.append(')').append(_ret);
                 IMappingBuilder.IMethod mtd = cls.method(desc.toString(), name, obf);
                 if (start != 0) mtd.meta("start_line", Integer.toString(start));
-                if (end   != 0) mtd.meta("end_line",   Integer.toString(end));
+                if (end != 0) mtd.meta("end_line", Integer.toString(end));
             } else {
                 if (cls == null)
                     throw new IOException("Invalid PG line, missing class: " + line);
@@ -157,19 +150,29 @@ class InternalUtils {
         return ret;
     }
 
-    private static IMappingBuilder loadSlimSRG(List<String> lines) throws IOException {
+    private static IMappingBuilder loadSlimSRG(List<String> lines, boolean reverseClass) throws IOException {
         IMappingBuilder ret = IMappingBuilder.create("left", "right");
         Map<String, IMappingBuilder.IClass> classes = new HashMap<>();
 
-        lines.stream().filter(l -> l.charAt(0) != '\t')
-        .map(l -> l.split(" "))
-        .filter(pts -> pts.length == 2)
-        .forEach(pts -> {
-            if (pts[0].endsWith("/"))
-                ret.addPackage(pts[0].substring(0, pts[0].length() - 1), pts[1].substring(0, pts[1].length() -1));
-            else
-                classes.put(pts[0], ret.addClass(pts[0], pts[1]));
-        });
+        lines.stream()
+                .filter(l -> l.charAt(0) != '\t')
+                .map(l -> l.split(" "))
+                .filter(pts -> pts.length == 2)
+                .forEach(pts -> {
+                    if (pts[0].endsWith("/"))
+                        ret.addPackage(pts[0].substring(0, pts[0].length() - 1), pts[1].substring(0, pts[1].length() - 1));
+                    else {
+                        if (reverseClass) {
+                            classes.put(pts[1], ret.addClass(pts[1], pts[0]));
+                        } else {
+                            classes.put(pts[0], ret.addClass(pts[0], pts[1]));
+                        }
+                    }
+                });
+
+        if (classes.size() == 0) {
+            throw new IOException("Invalid TSRG file, missing classes");
+        }
 
         IMappingBuilder.IClass cls = null;
         for (String line : lines) {
@@ -183,18 +186,17 @@ class InternalUtils {
                 else if (pts.length == 3)
                     cls.method(pts[1], pts[0], pts[2]);
                 else
-                    throw new IOException("Invalid TSRG line, to many parts: " + line);
+                    throw new IOException("Invalid TSRG line, too many parts: " + line);
             } else {
                 if (pts.length == 2) {
                     if (!pts[0].endsWith("/"))
                         cls = classes.get(pts[0]);
-                }
-                else if (pts.length == 3)
+                } else if (pts.length == 3)
                     classes.get(pts[0]).field(pts[1], pts[2]);
                 else if (pts.length == 4)
                     classes.get(pts[0]).method(pts[2], pts[1], pts[3]);
                 else
-                    throw new IOException("Invalid CSRG line, to many parts: " + line);
+                    throw new IOException("Invalid CSRG line, too many parts: " + line);
             }
         }
 
@@ -312,24 +314,24 @@ class InternalUtils {
             switch (line[0]) {
                 case "CLASS": // CLASS Name1 Name2 Name3...
                     if (line.length != nameCount + 1)
-                        throw new IOException("Invalid Tiny v1 line: #" + x + ": " + line);
+                        throw new IOException("Invalid Tiny v1 line: #" + x + ": " + Arrays.toString(line));
                     classes.put(line[1], ret.addClass(Arrays.copyOfRange(line, 1, line.length)));
                     break;
                 case "FIELD": // FIELD Owner Desc Name1 Name2 Name3
                     if (line.length != nameCount + 3)
-                        throw new IOException("Invalid Tiny v1 line: #" + x + ": " + line);
+                        throw new IOException("Invalid Tiny v1 line: #" + x + ": " + Arrays.toString(line));
                     classes.computeIfAbsent(line[1], k -> ret.addClass(duplicate(k, nameCount)))
-                        .field(Arrays.copyOfRange(line, 3, line.length))
-                        .descriptor(line[2]);
+                            .field(Arrays.copyOfRange(line, 3, line.length))
+                            .descriptor(line[2]);
                     break;
                 case "METHOD": // METHOD Owner Desc Name1 Name2 Name3
                     if (line.length != nameCount + 3)
-                        throw new IOException("Invalid Tiny v1 line: #" + x + ": " + line);
+                        throw new IOException("Invalid Tiny v1 line: #" + x + ": " + Arrays.toString(line));
                     classes.computeIfAbsent(line[1], k -> ret.addClass(duplicate(k, nameCount)))
-                        .method(line[2], Arrays.copyOfRange(line, 3, line.length));
+                            .method(line[2], Arrays.copyOfRange(line, 3, line.length));
                     break;
                 default:
-                    throw new IOException("Invalid Tiny v1 line: #" + x + ": " + line);
+                    throw new IOException("Invalid Tiny v1 line: #" + x + ": " + Arrays.toString(line));
             }
         }
 
@@ -357,8 +359,8 @@ class InternalUtils {
         int nameCount = header.length - 3;
         boolean escaped = false;
         Map<String, String> properties = new HashMap<>();
-        int start = 1;
-        for(start = 1; start < lines.size(); start++) {
+        int start;
+        for (start = 1; start < lines.size(); start++) {
             String[] line = lines.get(start).split("\t");
             if (!line[0].isEmpty())
                 break;
@@ -385,12 +387,21 @@ class InternalUtils {
 
             if (newdepth != stack.size()) {
                 while (stack.size() != newdepth) {
-                    switch(stack.pop()) {
-                        case CLASS:     cls    = null; break;
-                        case FIELD:     field  = null; break;
-                        case METHOD:    method = null; break;
-                        case PARAMETER: param  = null; break;
-                        default: break;
+                    switch (stack.pop()) {
+                        case CLASS:
+                            cls = null;
+                            break;
+                        case FIELD:
+                            field = null;
+                            break;
+                        case METHOD:
+                            method = null;
+                            break;
+                        case PARAMETER:
+                            param = null;
+                            break;
+                        default:
+                            break;
                     }
                 }
             }
@@ -411,10 +422,10 @@ class InternalUtils {
                         stack.push(TinyV2State.CLASS);
                     } else { // Comment
                         String comment = unescapeTinyString(parts[1]);
-                        if (method     != null) method.meta("comment", comment);
-                        else if (field != null) field .meta("comment", comment);
-                        else if (cls   != null) cls   .meta("comment", comment);
-                        else if (param != null) param .meta("comment", comment);
+                        if (method != null) method.meta("comment", comment);
+                        else if (field != null) field.meta("comment", comment);
+                        else if (cls != null) cls.meta("comment", comment);
+                        else if (param != null) param.meta("comment", comment);
                     }
                     break;
                 case "f": // Field: f desc Name1 Name2 Name3
@@ -452,7 +463,6 @@ class InternalUtils {
 
         return ret;
     }
-    enum TinyV2State { ROOT, CLASS, FIELD, METHOD, PARAMETER }
 
     /* <escaped-string> is a string that must not contain <eol> and escapes
      *     \ to \\
@@ -478,35 +488,47 @@ class InternalUtils {
     }
 
     static String toDesc(String type) {
-        if (type.endsWith("[]"))    return "[" + toDesc(type.substring(0, type.length() - 2));
-        if (type.equals("int"))     return "I";
-        if (type.equals("void"))    return "V";
+        if (type.endsWith("[]")) return "[" + toDesc(type.substring(0, type.length() - 2));
+        if (type.equals("int")) return "I";
+        if (type.equals("void")) return "V";
         if (type.equals("boolean")) return "Z";
-        if (type.equals("byte"))    return "B";
-        if (type.equals("char"))    return "C";
-        if (type.equals("short"))   return "S";
-        if (type.equals("double"))  return "D";
-        if (type.equals("float"))   return "F";
-        if (type.equals("long"))    return "J";
-        if (type.contains("/"))     return "L" + type + ";";
+        if (type.equals("byte")) return "B";
+        if (type.equals("char")) return "C";
+        if (type.equals("short")) return "S";
+        if (type.equals("double")) return "D";
+        if (type.equals("float")) return "F";
+        if (type.equals("long")) return "J";
+        if (type.contains("/")) return "L" + type + ";";
         throw new RuntimeException("Invalid toDesc input: " + type);
     }
 
     static String toSource(String desc) {
         char first = desc.charAt(0);
         switch (first) {
-            case 'I': return "int";
-            case 'V': return "void";
-            case 'Z': return "boolean";
-            case 'B': return "byte";
-            case 'C': return "char";
-            case 'S': return "short";
-            case 'D': return "double";
-            case 'F': return "float";
-            case 'J': return "long";
-            case '[': return toSource(desc.substring(1)) + "[]";
-            case 'L': return desc.substring(1, desc.length() - 1).replace('/', '.');
-            default: throw new IllegalArgumentException("Unknown descriptor: " + desc);
+            case 'I':
+                return "int";
+            case 'V':
+                return "void";
+            case 'Z':
+                return "boolean";
+            case 'B':
+                return "byte";
+            case 'C':
+                return "char";
+            case 'S':
+                return "short";
+            case 'D':
+                return "double";
+            case 'F':
+                return "float";
+            case 'J':
+                return "long";
+            case '[':
+                return toSource(desc.substring(1)) + "[]";
+            case 'L':
+                return desc.substring(1, desc.length() - 1).replace('/', '.');
+            default:
+                throw new IllegalArgumentException("Unknown descriptor: " + desc);
         }
     }
 
@@ -556,10 +578,9 @@ class InternalUtils {
         }
         pts.add(str);
         Collections.reverse(pts);
-        return pts.toArray(new String[pts.size()]);
+        return pts.toArray(new String[0]);
     }
 
-    private static final List<String> ORDER = Arrays.asList("PK:", "CL:", "FD:", "MD:");
     public static int compareLines(String o1, String o2) {
         String[] pt1 = o1.split(" ");
         String[] pt2 = o2.split(" ");
@@ -570,11 +591,10 @@ class InternalUtils {
             return o1.compareTo(o2);
         if ("CL:".equals(pt1[0]))
             return compareCls(pt1[1], pt2[1]);
-        if ("FD:".equals(pt1[0]) || "MD:".equals(pt1[0]))
-        {
+        if ("FD:".equals(pt1[0]) || "MD:".equals(pt1[0])) {
             String[][] y = {
-                {pt1[1].substring(0, pt1[1].lastIndexOf('/')), pt1[1].substring(pt1[1].lastIndexOf('/') + 1)},
-                {pt2[1].substring(0, pt2[1].lastIndexOf('/')), pt2[1].substring(pt2[1].lastIndexOf('/') + 1)}
+                    {pt1[1].substring(0, pt1[1].lastIndexOf('/')), pt1[1].substring(pt1[1].lastIndexOf('/') + 1)},
+                    {pt2[1].substring(0, pt2[1].lastIndexOf('/')), pt2[1].substring(pt2[1].lastIndexOf('/') + 1)}
             };
             int ret = compareCls(y[0][0], y[1][0]);
             if (ret != 0)
@@ -587,12 +607,10 @@ class InternalUtils {
     public static int compareCls(String cls1, String cls2) {
         if (cls1.indexOf('/') > 0 && cls2.indexOf('/') > 0)
             return cls1.compareTo(cls2);
-        String[][] t = { cls1.split("\\$"), cls2.split("\\$") };
+        String[][] t = {cls1.split("\\$"), cls2.split("\\$")};
         int max = Math.min(t[0].length, t[1].length);
-        for (int i = 0; i < max; i++)
-        {
-            if (!t[0][i].equals(t[1][i]))
-            {
+        for (int i = 0; i < max; i++) {
+            if (!t[0][i].equals(t[1][i])) {
                 if (t[0][i].length() != t[1][i].length())
                     return t[0][i].length() - t[1][i].length();
                 return t[0][i].compareTo(t[1][i]);
@@ -602,15 +620,7 @@ class InternalUtils {
     }
 
     public static String stripComment(String str) {
-        int idx = str.indexOf('#');
-        if (idx == 0)
-            return "";
-        if (idx != -1)
-            str = str.substring(0, idx - 1);
-        int end = str.length();
-        while (end > 1 && str.charAt(end - 1) == ' ')
-            end--;
-        return end == 0 ? "" : str.substring(0, end);
+        return str.replaceAll(" *#.+$", "");
     }
 
     private static void swapFirst(String[] values) {
@@ -625,15 +635,20 @@ class InternalUtils {
         return ret;
     }
 
-    enum Element{ PACKAGE, CLASS, FIELD, METHOD, PARAMETER }
     static void writeMeta(Format format, List<String> lines, Element element, Map<String, String> meta) {
         int indent = 0;
         switch (element) {
             case PACKAGE:
-            case CLASS:     indent = 1; break;
+            case CLASS:
+                indent = 1;
+                break;
             case FIELD:
-            case METHOD:    indent = 2; break;
-            case PARAMETER: indent = 3; break;
+            case METHOD:
+                indent = 2;
+                break;
+            case PARAMETER:
+                indent = 3;
+                break;
         }
 
         switch (format) {
@@ -642,7 +657,8 @@ class InternalUtils {
             case SRG:
             case TINY1:
             case TSRG:
-            case XSRG: break;
+            case XSRG:
+                break;
             case TINY:
                 String comment = meta.get("comment");
                 if (comment != null) {
@@ -660,4 +676,8 @@ class InternalUtils {
                 break;
         }
     }
+
+    enum TinyV2State {ROOT, CLASS, FIELD, METHOD, PARAMETER}
+
+    enum Element {PACKAGE, CLASS, FIELD, METHOD, PARAMETER}
 }

@@ -19,35 +19,30 @@
 
 package net.minecraftforge.srgutils;
 
+import javax.annotation.Nullable;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.annotation.Nullable;
-
 import static net.minecraftforge.srgutils.InternalUtils.Element.*;
-import static net.minecraftforge.srgutils.InternalUtils.*;
+import static net.minecraftforge.srgutils.InternalUtils.writeMeta;
 
 class MappingFile implements IMappingFile {
-    private Map<String, Package> packages = new HashMap<>();
-    private Collection<Package> packagesView = Collections.unmodifiableCollection(packages.values());
-    private Map<String, Cls> classes = new HashMap<>();
-    private Collection<Cls> classesView = Collections.unmodifiableCollection(classes.values());
-    private Map<String, String> cache = new ConcurrentHashMap<>();
     static final Pattern DESC = Pattern.compile("L(?<cls>[^;]+);");
+    private final Map<String, Package> packages = new HashMap<>();
+    private final Collection<Package> packagesView = Collections.unmodifiableCollection(packages.values());
+    private final Map<String, Cls> classes = new HashMap<>();
+    private final Collection<Cls> classesView = Collections.unmodifiableCollection(classes.values());
+    private final Map<String, String> cache = new ConcurrentHashMap<>();
 
-    MappingFile(){}
+    MappingFile() {
+    }
+
     MappingFile(NamedMappingFile source, int from, int to) {
         source.getPackages().forEach(pkg -> addPackage(pkg.getName(from), pkg.getName(to), pkg.meta));
         source.getClasses().forEach(cls -> {
@@ -58,6 +53,11 @@ class MappingFile implements IMappingFile {
                 mtd.getParameters().forEach(par -> m.addParameter(par.getIndex(), par.getName(from), par.getName(to), par.meta));
             });
         });
+    }
+
+    private static <K, V> V retPut(Map<K, V> map, K key, V value) {
+        map.put(key, value);
+        return value;
     }
 
     @Override
@@ -129,7 +129,7 @@ class MappingFile implements IMappingFile {
     @Override
     public void write(Path path, Format format, boolean reversed) throws IOException {
         List<String> lines = new ArrayList<>();
-        Comparator<INode> sort = reversed ? (a,b) -> a.getMapped().compareTo(b.getMapped()) : (a,b) -> a.getOriginal().compareTo(b.getOriginal());
+        Comparator<INode> sort = reversed ? Comparator.comparing(INode::getMapped) : Comparator.comparing(INode::getOriginal);
 
         getPackages().stream().sorted(sort).forEachOrdered(pkg -> {
             lines.add(pkg.write(format, reversed));
@@ -148,18 +148,18 @@ class MappingFile implements IMappingFile {
                 lines.add(mtd.write(format, reversed));
                 writeMeta(format, lines, METHOD, mtd.getMetadata());
 
-                mtd.getParameters().stream().sorted((a,b) -> a.getIndex() - b.getIndex()).forEachOrdered(par -> {
+                mtd.getParameters().stream().sorted(Comparator.comparingInt(Cls.Method.Parameter::getIndex)).forEachOrdered(par -> {
                     lines.add(par.write(format, reversed));
                     writeMeta(format, lines, PARAMETER, par.getMetadata());
                 });
             });
         });
 
-        lines.removeIf(e -> e == null);
+        lines.removeIf(Objects::isNull);
 
         if (!format.isOrdered()) {
-            Comparator<String> linesort = (format == Format.SRG || format == Format.XSRG) ? InternalUtils::compareLines : (o1, o2) -> o1.compareTo(o2);
-            Collections.sort(lines, linesort);
+            Comparator<String> linesort = (format == Format.SRG || format == Format.XSRG) ? InternalUtils::compareLines : Comparator.naturalOrder();
+            lines.sort(linesort);
         }
 
         if (format == Format.TINY1) {
@@ -182,13 +182,13 @@ class MappingFile implements IMappingFile {
     @Override
     public MappingFile reverse() {
         MappingFile ret = new MappingFile();
-        getPackages().stream().forEach(pkg -> ret.addPackage(pkg.getMapped(), pkg.getOriginal(), pkg.getMetadata()));
-        getClasses().stream().forEach(cls -> {
+        getPackages().forEach(pkg -> ret.addPackage(pkg.getMapped(), pkg.getOriginal(), pkg.getMetadata()));
+        getClasses().forEach(cls -> {
             Cls c = ret.addClass(cls.getMapped(), cls.getOriginal(), cls.getMetadata());
-            cls.getFields().stream().forEach(fld -> c.addField(fld.getMapped(), fld.getOriginal(), fld.getMappedDescriptor(), fld.getMetadata()));
-            cls.getMethods().stream().forEach(mtd -> {
+            cls.getFields().forEach(fld -> c.addField(fld.getMapped(), fld.getOriginal(), fld.getMappedDescriptor(), fld.getMetadata()));
+            cls.getMethods().forEach(mtd -> {
                 Cls.Method m = c.addMethod(mtd.getMapped(), mtd.getMappedDescriptor(), mtd.getOriginal(), mtd.getMetadata());
-                mtd.getParameters().stream().forEach(par -> m.addParameter(par.getIndex(), par.getMapped(), par.getOriginal(), par.getMetadata()));
+                mtd.getParameters().forEach(par -> m.addParameter(par.getIndex(), par.getMapped(), par.getOriginal(), par.getMetadata()));
             });
         });
         return ret;
@@ -197,13 +197,13 @@ class MappingFile implements IMappingFile {
     @Override
     public MappingFile rename(IRenamer renamer) {
         MappingFile ret = new MappingFile();
-        getPackages().stream().forEach(pkg -> ret.addPackage(pkg.getOriginal(), renamer.rename(pkg), pkg.getMetadata()));
-        getClasses().stream().forEach(cls -> {
+        getPackages().forEach(pkg -> ret.addPackage(pkg.getOriginal(), renamer.rename(pkg), pkg.getMetadata()));
+        getClasses().forEach(cls -> {
             Cls c = ret.addClass(cls.getOriginal(), renamer.rename(cls), cls.getMetadata());
-            cls.getFields().stream().forEach(fld -> c.addField(fld.getOriginal(), renamer.rename(fld), fld.getDescriptor(), fld.getMetadata()));
-            cls.getMethods().stream().forEach(mtd -> {
+            cls.getFields().forEach(fld -> c.addField(fld.getOriginal(), renamer.rename(fld), fld.getDescriptor(), fld.getMetadata()));
+            cls.getMethods().forEach(mtd -> {
                 Cls.Method m = c.addMethod(mtd.getOriginal(), mtd.getDescriptor(), renamer.rename(mtd), mtd.getMetadata());
-                mtd.getParameters().stream().forEach(par -> m.addParameter(par.getIndex(), par.getOriginal(), renamer.rename(par), par.getMetadata()));
+                mtd.getParameters().forEach(par -> m.addParameter(par.getIndex(), par.getOriginal(), renamer.rename(par), par.getMetadata()));
             });
         });
         return ret;
@@ -239,7 +239,7 @@ class MappingFile implements IMappingFile {
         });
     }
 
-    abstract class Node implements INode {
+    abstract static class Node implements INode {
         private final String original;
         private final String mapped;
         private final Map<String, String> metadata;
@@ -266,7 +266,7 @@ class MappingFile implements IMappingFile {
         }
     }
 
-    class Package extends Node implements IPackage {
+    static class Package extends Node implements IPackage {
         protected Package(String original, String mapped, Map<String, String> metadata) {
             super(original, mapped, metadata);
         }
@@ -285,13 +285,17 @@ class MappingFile implements IMappingFile {
 
             switch (format) {
                 case SRG:
-                case XSRG: return "PK: " + sorig + ' ' + smap;
+                case XSRG:
+                    return "PK: " + sorig + ' ' + smap;
                 case CSRG:
                 case TSRG:
-                case TSRG2: return getOriginal() + "/ " + getMapped() + '/';
+                case TSRG2:
+                    return getOriginal() + "/ " + getMapped() + '/';
                 case PG:
-                case TINY1: return null;
-                default: throw new UnsupportedOperationException("Unknown format: " + format);
+                case TINY1:
+                    return null;
+                default:
+                    throw new UnsupportedOperationException("Unknown format: " + format);
             }
         }
 
@@ -302,10 +306,10 @@ class MappingFile implements IMappingFile {
     }
 
     class Cls extends Node implements IClass {
-        private Map<String, Field> fields = new HashMap<>();
-        private Collection<Field> fieldsView = Collections.unmodifiableCollection(fields.values());
-        private Map<String, Method> methods = new HashMap<>();
-        private Collection<Method> methodsView = Collections.unmodifiableCollection(methods.values());
+        private final Map<String, Field> fields = new HashMap<>();
+        private final Collection<Field> fieldsView = Collections.unmodifiableCollection(fields.values());
+        private final Map<String, Method> methods = new HashMap<>();
+        private final Collection<Method> methodsView = Collections.unmodifiableCollection(methods.values());
 
         protected Cls(String original, String mapped, Map<String, String> metadata) {
             super(original, mapped, metadata);
@@ -318,14 +322,20 @@ class MappingFile implements IMappingFile {
             String mName = !reversed ? getMapped() : getOriginal();
             switch (format) {
                 case SRG:
-                case XSRG: return "CL: " + oName + ' ' + mName;
+                case XSRG:
+                    return "CL: " + oName + ' ' + mName;
                 case CSRG:
                 case TSRG:
-                case TSRG2: return oName + ' ' + mName;
-                case PG: return oName.replace('/', '.') + " -> " + mName.replace('/', '.') + ':';
-                case TINY1: return "CLASS\t" + oName + '\t' + mName;
-                case TINY:  return "c\t" + oName + '\t' + mName;
-                default: throw new UnsupportedOperationException("Unknown format: " + format);
+                case TSRG2:
+                    return oName + ' ' + mName;
+                case PG:
+                    return oName.replace('/', '.') + " -> " + mName.replace('/', '.') + ':';
+                case TINY1:
+                    return "CLASS\t" + oName + '\t' + mName;
+                case TINY:
+                    return "c\t" + oName + '\t' + mName;
+                default:
+                    throw new UnsupportedOperationException("Unknown format: " + format);
             }
         }
 
@@ -343,7 +353,7 @@ class MappingFile implements IMappingFile {
         @Override
         public String remapField(String field) {
             Field fld = fields.get(field);
-            return fld  == null ? field : fld.getMapped();
+            return fld == null ? field : fld.getMapped();
         }
 
         private Field addField(String original, String mapped, String desc, Map<String, String> metadata) {
@@ -377,7 +387,7 @@ class MappingFile implements IMappingFile {
         }
 
         class Field extends Node implements IField {
-            private String desc;
+            private final String desc;
 
             private Field(String original, String mapped, String desc, Map<String, String> metadata) {
                 super(original, mapped, metadata);
@@ -408,15 +418,24 @@ class MappingFile implements IMappingFile {
                 String mDesc = !reversed ? this.getMappedDescriptor() : this.getDescriptor();
 
                 switch (format) {
-                    case SRG:  return "FD: " + oOwner+ '/' + oName + ' ' + mOwner + '/' + mName + (oDesc == null ? "" : " # " + oDesc + " " + mDesc);
-                    case XSRG: return "FD: " + oOwner + '/' + oName + (oDesc == null ? "" : ' ' + oDesc) + ' ' + mOwner + '/' + mName + (mDesc == null ? "" : ' ' + mDesc);
-                    case CSRG: return oOwner + ' ' + oName + ' ' + mName;
-                    case TSRG: return '\t' + oName + ' ' + mName;
-                    case TSRG2: return '\t' + oName + (oDesc == null ? "" : ' ' + oDesc) + ' ' + mName;
-                    case PG:   return "    " + InternalUtils.toSource(oDesc) + ' ' + oName + " -> " + mName;
-                    case TINY1: return "FIELD\t" + oOwner + '\t' + oDesc + '\t' + oName + '\t' + mName;
-                    case TINY: return "\tf\t" + oDesc + '\t' + oName + '\t' + mName;
-                    default: throw new UnsupportedOperationException("Unknown format: " + format);
+                    case SRG:
+                        return "FD: " + oOwner + '/' + oName + ' ' + mOwner + '/' + mName + (oDesc == null ? "" : " # " + oDesc + " " + mDesc);
+                    case XSRG:
+                        return "FD: " + oOwner + '/' + oName + (oDesc == null ? "" : ' ' + oDesc) + ' ' + mOwner + '/' + mName + (mDesc == null ? "" : ' ' + mDesc);
+                    case CSRG:
+                        return oOwner + ' ' + oName + ' ' + mName;
+                    case TSRG:
+                        return '\t' + oName + ' ' + mName;
+                    case TSRG2:
+                        return '\t' + oName + (oDesc == null ? "" : ' ' + oDesc) + ' ' + mName;
+                    case PG:
+                        return "    " + InternalUtils.toSource(Objects.requireNonNull(oDesc)) + ' ' + oName + " -> " + mName;
+                    case TINY1:
+                        return "FIELD\t" + oOwner + '\t' + oDesc + '\t' + oName + '\t' + mName;
+                    case TINY:
+                        return "\tf\t" + oDesc + '\t' + oName + '\t' + mName;
+                    default:
+                        throw new UnsupportedOperationException("Unknown format: " + format);
                 }
             }
 
@@ -445,6 +464,7 @@ class MappingFile implements IMappingFile {
             public String getDescriptor() {
                 return this.desc;
             }
+
             @Override
             public String getMappedDescriptor() {
                 return MappingFile.this.remapDescriptor(this.desc);
@@ -476,17 +496,23 @@ class MappingFile implements IMappingFile {
 
                 switch (format) {
                     case SRG:
-                    case XSRG: return "MD: " + oOwner + '/' + oName + ' ' + oDesc + ' ' + mOwner + '/' + mName + ' ' + mDesc;
-                    case CSRG: return oOwner + ' ' + oName + ' ' + oDesc + ' ' + mName;
+                    case XSRG:
+                        return "MD: " + oOwner + '/' + oName + ' ' + oDesc + ' ' + mOwner + '/' + mName + ' ' + mDesc;
+                    case CSRG:
+                        return oOwner + ' ' + oName + ' ' + oDesc + ' ' + mName;
                     case TSRG:
-                    case TSRG2: return '\t' + oName + ' ' + oDesc + ' ' + mName;
-                    case TINY1: return "METHOD\t" + oOwner + '\t' + oDesc + '\t' + oName + '\t' + mName;
-                    case TINY: return "\tm\t" + oDesc + '\t' + oName + '\t' + mName;
+                    case TSRG2:
+                        return '\t' + oName + ' ' + oDesc + ' ' + mName;
+                    case TINY1:
+                        return "METHOD\t" + oOwner + '\t' + oDesc + '\t' + oName + '\t' + mName;
+                    case TINY:
+                        return "\tm\t" + oDesc + '\t' + oName + '\t' + mName;
                     case PG:
                         int start = Integer.parseInt(getMetadata().getOrDefault("start_line", "0"));
                         int end = Integer.parseInt(getMetadata().getOrDefault("end_line", "0"));
                         return "    " + (start == 0 && end == 0 ? "" : start + ":" + end + ":") + InternalUtils.toSource(oName, oDesc) + " -> " + mName;
-                    default: throw new UnsupportedOperationException("Unknown format: " + format);
+                    default:
+                        throw new UnsupportedOperationException("Unknown format: " + format);
                 }
             }
 
@@ -502,18 +528,22 @@ class MappingFile implements IMappingFile {
 
             class Parameter extends Node implements IParameter {
                 private final int index;
+
                 protected Parameter(int index, String original, String mapped, Map<String, String> metadata) {
                     super(original, mapped, metadata);
                     this.index = index;
                 }
+
                 @Override
                 public IMethod getParent() {
                     return Method.this;
                 }
+
                 @Override
                 public int getIndex() {
                     return this.index;
                 }
+
                 @Override
                 public String write(Format format, boolean reversed) {
                     String oName = !reversed ? getOriginal() : getMapped();
@@ -524,19 +554,18 @@ class MappingFile implements IMappingFile {
                         case CSRG:
                         case TSRG:
                         case PG:
-                        case TINY1: return null;
-                        case TINY: return "\t\tp\t" + getIndex() + '\t' + oName + '\t' + mName;
-                        case TSRG2: return "\t\t" + getIndex() + ' ' + oName + ' ' + mName;
-                        default: throw new UnsupportedOperationException("Unknown format: " + format);
+                        case TINY1:
+                            return null;
+                        case TINY:
+                            return "\t\tp\t" + getIndex() + '\t' + oName + '\t' + mName;
+                        case TSRG2:
+                            return "\t\t" + getIndex() + ' ' + oName + ' ' + mName;
+                        default:
+                            throw new UnsupportedOperationException("Unknown format: " + format);
                     }
                 }
 
             }
         }
-    }
-
-    private static <K, V> V retPut(Map<K, V> map, K key, V value) {
-        map.put(key, value);
-        return value;
     }
 }

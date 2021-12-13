@@ -19,25 +19,36 @@
 
 package net.minecraftforge.srgutils.test;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Paths;
-
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-
 import net.minecraftforge.srgutils.IMappingFile;
 import net.minecraftforge.srgutils.IMappingFile.Format;
 import net.minecraftforge.srgutils.INamedMappingFile;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
+import java.util.Scanner;
 
 public class MappingTest {
-
     InputStream getStream(String name) {
         return MappingTest.class.getClassLoader().getResourceAsStream(name);
     }
 
+    String readStringFromURL(String requestURL) {
+        try (Scanner scanner = new Scanner(new URL(requestURL).openStream(), StandardCharsets.UTF_8.toString())) {
+            scanner.useDelimiter("\\A");
+            return scanner.hasNext() ? scanner.next() : "";
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
+
     @Test
-    void test() throws IOException {
+    void parseAndReverse() throws IOException {
         IMappingFile pg = IMappingFile.load(getStream("./installer.pg"));
         IMappingFile reverse = pg.reverse();
         for (Format f : Format.values()) {
@@ -63,15 +74,27 @@ public class MappingTest {
                 if (mb == null) {
                     //Assertions.assertNotNull(mb, "Could not find method: " + ma);
                     StringBuilder buf = new StringBuilder();
-                    buf.append("Could not find method: " + ma);
-                    cb.getMethods().forEach(m -> {
-                        buf.append("\n  ").append(m.toString());
-                    });
+                    buf.append("Could not find method: ").append(ma);
+                    cb.getMethods().forEach(m -> buf.append("\n  ").append(m.toString()));
                     throw new IllegalArgumentException(buf.toString());
                 }
                 Assertions.assertEquals(ma.getMapped(), mb.getMapped(), "Methods did not match: " + ma + "{" + ma.getMapped() + " -> " + mb.getMapped() + "}");
                 Assertions.assertEquals(ma.getMappedDescriptor(), mb.getMappedDescriptor(), "Method descriptors did not match: " + ma + "{" + ma.getMappedDescriptor() + " -> " + mb.getMappedDescriptor() + "}");
             });
         });
+    }
+
+    @Test
+    void parseReversedCsrg() {
+        final String mergedCsrg = readStringFromURL(
+                "https://hub.spigotmc.org/stash/projects/SPIGOT/repos/builddata/raw/mappings/bukkit-1.17.1-members.csrg?at=a4785704979a469daa2b7f6826c84e7fe886bb03"
+        ) + "\n" + readStringFromURL(
+                "https://hub.spigotmc.org/stash/projects/SPIGOT/repos/builddata/raw/mappings/bukkit-1.17.1-cl.csrg?at=a4785704979a469daa2b7f6826c84e7fe886bb03"
+        );
+        try {
+            IMappingFile.load(mergedCsrg);
+        } catch (IOException e) {
+            Assertions.fail(e);
+        }
     }
 }
