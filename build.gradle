@@ -18,8 +18,8 @@ plugins {
 }
 
 group 'net.minecraftforge'
-version = gradleutils.getTagOffsetVersion()
-println('Version: ' + version)
+// version = gradleutils.getTagOffsetVersion()
+version = '0.4.11-SNAPSHOT'
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(8)
 
@@ -102,7 +102,15 @@ publishing {
         }
     }
     repositories {
-        maven gradleutils.publishingForgeMaven
+        maven({ MavenArtifactRepository repository ->
+            if (((String) project.version).contains("SNAPSHOT")) {
+                repository.url = System.getenv("NEXUS_URL_SNAPSHOT")
+            } else {
+                repository.url = System.getenv("NEXUS_URL_RELEASE")
+            }
+            repository.credentials.username = System.getenv("NEXUS_USERNAME")
+            repository.credentials.password = System.getenv("NEXUS_PASSWORD")
+        })
     }
 }
 
