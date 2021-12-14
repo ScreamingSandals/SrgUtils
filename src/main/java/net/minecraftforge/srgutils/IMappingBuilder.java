@@ -21,7 +21,7 @@ package net.minecraftforge.srgutils;
 
 public interface IMappingBuilder {
     static IMappingBuilder create(String... names) {
-        return new NamedMappingFile(names == null || names.length == 0 ? new String[]{"left", "right"} : names);
+        return new NamedMappingFile(names == null || names.length == 0 ? new String[] {"left", "right"} : names);
     }
 
     IPackage addPackage(String... names);

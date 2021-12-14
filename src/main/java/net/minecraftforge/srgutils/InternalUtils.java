@@ -192,13 +192,14 @@ class InternalUtils {
                 else
                     throw new IOException("Invalid TSRG line, too many parts: " + line);
             } else {
+                // if mapping is missing, presuming that it maps to the same name
                 if (pts.length == 2) {
                     if (!pts[0].endsWith("/"))
                         cls = classes.get(pts[0]);
                 } else if (pts.length == 3)
-                    classes.get(pts[0]).field(pts[1], pts[2]);
+                    classes.computeIfAbsent(pts[0], key -> ret.addClass(key, key)).field(pts[1], pts[2]);
                 else if (pts.length == 4)
-                    classes.get(pts[0]).method(pts[2], pts[1], pts[3]);
+                    classes.computeIfAbsent(pts[0], key -> ret.addClass(key, key)).method(pts[2], pts[1], pts[3]);
                 else
                     throw new IOException("Invalid CSRG line, too many parts: " + line);
             }
