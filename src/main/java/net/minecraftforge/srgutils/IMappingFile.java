@@ -70,6 +70,8 @@ public interface IMappingFile {
 
     IClass getClass(String original);
 
+    IClass getMappedClass(String mapped);
+
     String remapPackage(String pkg);
 
     String remapClass(String desc);

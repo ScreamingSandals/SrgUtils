@@ -86,6 +86,15 @@ class MappingFile implements IMappingFile {
         return classes.get(original);
     }
 
+    @Override
+    @Nullable
+    public IClass getMappedClass(String mapped) {
+        return classes.values().stream()
+                .filter(value -> value.getMapped().equals(mapped))
+                .findFirst()
+                .orElse(null);
+    }
+
     private Cls addClass(String original, String mapped, Map<String, String> metadata) {
         return retPut(this.classes, original, new Cls(original, mapped, metadata));
     }
