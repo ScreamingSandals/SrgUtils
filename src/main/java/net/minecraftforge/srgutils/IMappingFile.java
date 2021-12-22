@@ -70,8 +70,6 @@ public interface IMappingFile {
 
     IClass getClass(String original);
 
-    IClass getMappedClass(String mapped);
-
     String remapPackage(String pkg);
 
     String remapClass(String desc);
@@ -151,10 +149,14 @@ public interface IMappingFile {
         Map<String, String> getMetadata();
     }
 
-    interface IPackage extends INode {
+    interface IOwnedNode<T> extends INode {
+        T getParent();
     }
 
-    interface IClass extends INode {
+    interface IPackage extends IOwnedNode<IMappingFile> {
+    }
+
+    interface IClass extends IOwnedNode<IMappingFile> {
         Collection<? extends IField> getFields();
 
         Collection<? extends IMethod> getMethods();
@@ -168,10 +170,6 @@ public interface IMappingFile {
 
         @Nullable
         IMethod getMethod(String name, String desc);
-    }
-
-    interface IOwnedNode<T> extends INode {
-        T getParent();
     }
 
     interface IField extends IOwnedNode<IClass> {

@@ -72,7 +72,7 @@ class MappingFile implements IMappingFile {
     }
 
     private Package addPackage(String original, String mapped, Map<String, String> metadata) {
-        return packages.put(original, new Package(original, mapped, metadata));
+        return packages.put(original, new Package(this, original, mapped, metadata));
     }
 
     @Override
@@ -86,17 +86,8 @@ class MappingFile implements IMappingFile {
         return classes.get(original);
     }
 
-    @Override
-    @Nullable
-    public IClass getMappedClass(String mapped) {
-        return classes.values().stream()
-                .filter(value -> value.getMapped().equals(mapped))
-                .findFirst()
-                .orElse(null);
-    }
-
     private Cls addClass(String original, String mapped, Map<String, String> metadata) {
-        return retPut(this.classes, original, new Cls(original, mapped, metadata));
+        return retPut(this.classes, original, new Cls(this, original, mapped, metadata));
     }
 
     @Override
@@ -253,7 +244,7 @@ class MappingFile implements IMappingFile {
         private final String mapped;
         private final Map<String, String> metadata;
 
-        protected Node(String original, String mapped, Map<String, String> metadata) {
+        Node(String original, String mapped, Map<String, String> metadata) {
             this.original = original;
             this.mapped = mapped;
             this.metadata = metadata.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(metadata);
@@ -276,8 +267,11 @@ class MappingFile implements IMappingFile {
     }
 
     static class Package extends Node implements IPackage {
-        protected Package(String original, String mapped, Map<String, String> metadata) {
+        private final MappingFile parent;
+
+        Package(MappingFile parent, String original, String mapped, Map<String, String> metadata) {
             super(original, mapped, metadata);
+            this.parent = parent;
         }
 
         @Override
@@ -312,16 +306,23 @@ class MappingFile implements IMappingFile {
         public String toString() {
             return this.write(Format.SRG, false);
         }
+
+        @Override
+        public IMappingFile getParent() {
+            return parent;
+        }
     }
 
-    class Cls extends Node implements IClass {
+    static class Cls extends Node implements IClass {
         private final Map<String, Field> fields = new HashMap<>();
         private final Collection<Field> fieldsView = Collections.unmodifiableCollection(fields.values());
         private final Map<String, Method> methods = new HashMap<>();
         private final Collection<Method> methodsView = Collections.unmodifiableCollection(methods.values());
+        private final MappingFile parent;
 
-        protected Cls(String original, String mapped, Map<String, String> metadata) {
+        Cls(MappingFile parent, String original, String mapped, Map<String, String> metadata) {
             super(original, mapped, metadata);
+            this.parent = parent;
         }
 
         @Override
@@ -366,7 +367,7 @@ class MappingFile implements IMappingFile {
         }
 
         private Field addField(String original, String mapped, String desc, Map<String, String> metadata) {
-            return retPut(this.fields, original, new Field(original, mapped, desc, metadata));
+            return retPut(this.fields, original, new Field(this, original, mapped, desc, metadata));
         }
 
         @Override
@@ -381,7 +382,7 @@ class MappingFile implements IMappingFile {
         }
 
         private Method addMethod(String original, String desc, String mapped, Map<String, String> metadata) {
-            return retPut(this.methods, original + desc, new Method(original, desc, mapped, metadata));
+            return retPut(this.methods, original + desc, new Method(this, original, desc, mapped, metadata));
         }
 
         @Override
@@ -395,12 +396,19 @@ class MappingFile implements IMappingFile {
             return this.write(Format.SRG, false);
         }
 
-        class Field extends Node implements IField {
-            private final String desc;
+        @Override
+        public IMappingFile getParent() {
+            return parent;
+        }
 
-            private Field(String original, String mapped, String desc, Map<String, String> metadata) {
+        static class Field extends Node implements IField {
+            private final String desc;
+            private final Cls parent;
+
+            Field(Cls parent, String original, String mapped, String desc, Map<String, String> metadata) {
                 super(original, mapped, metadata);
                 this.desc = desc;
+                this.parent = parent;
             }
 
             @Override
@@ -410,7 +418,7 @@ class MappingFile implements IMappingFile {
 
             @Override
             public String getMappedDescriptor() {
-                return this.desc == null ? null : MappingFile.this.remapDescriptor(this.desc);
+                return this.desc == null ? null : getParent().getParent().remapDescriptor(this.desc);
             }
 
             @Override
@@ -419,8 +427,8 @@ class MappingFile implements IMappingFile {
                 if (format != Format.TSRG2 && format.hasFieldTypes() && this.desc == null)
                     throw new IllegalStateException("Can not write " + format.name() + " format, field is missing descriptor");
 
-                String oOwner = !reversed ? Cls.this.getOriginal() : Cls.this.getMapped();
-                String mOwner = !reversed ? Cls.this.getMapped() : Cls.this.getOriginal();
+                String oOwner = !reversed ? getParent().getOriginal() : getParent().getMapped();
+                String mOwner = !reversed ? getParent().getMapped() : getParent().getOriginal();
                 String oName = !reversed ? this.getOriginal() : this.getMapped();
                 String mName = !reversed ? this.getMapped() : this.getOriginal();
                 String oDesc = !reversed ? this.getDescriptor() : this.getMappedDescriptor();
@@ -455,18 +463,20 @@ class MappingFile implements IMappingFile {
 
             @Override
             public Cls getParent() {
-                return Cls.this;
+                return parent;
             }
         }
 
-        class Method extends Node implements IMethod {
+        static class Method extends Node implements IMethod {
             private final String desc;
             private final Map<Integer, Parameter> params = new HashMap<>();
             private final Collection<Parameter> paramsView = Collections.unmodifiableCollection(params.values());
+            private final Cls parent;
 
-            private Method(String original, String desc, String mapped, Map<String, String> metadata) {
+            private Method(Cls parent, String original, String desc, String mapped, Map<String, String> metadata) {
                 super(original, mapped, metadata);
                 this.desc = desc;
+                this.parent = parent;
             }
 
             @Override
@@ -476,7 +486,7 @@ class MappingFile implements IMappingFile {
 
             @Override
             public String getMappedDescriptor() {
-                return MappingFile.this.remapDescriptor(this.desc);
+                return getParent().getParent().remapDescriptor(this.desc);
             }
 
             @Override
@@ -485,7 +495,7 @@ class MappingFile implements IMappingFile {
             }
 
             private Parameter addParameter(int index, String original, String mapped, Map<String, String> metadata) {
-                return retPut(this.params, index, new Parameter(index, original, mapped, metadata));
+                return retPut(this.params, index, new Parameter(this, index, original, mapped, metadata));
             }
 
             @Override
@@ -498,8 +508,8 @@ class MappingFile implements IMappingFile {
             public String write(Format format, boolean reversed) {
                 String oName = !reversed ? getOriginal() : getMapped();
                 String mName = !reversed ? getMapped() : getOriginal();
-                String oOwner = !reversed ? Cls.this.getOriginal() : Cls.this.getMapped();
-                String mOwner = !reversed ? Cls.this.getMapped() : Cls.this.getOriginal();
+                String oOwner = !reversed ? parent.getOriginal() : parent.getMapped();
+                String mOwner = !reversed ? parent.getMapped() : parent.getOriginal();
                 String oDesc = !reversed ? getDescriptor() : getMappedDescriptor();
                 String mDesc = !reversed ? getMappedDescriptor() : getDescriptor();
 
@@ -532,20 +542,22 @@ class MappingFile implements IMappingFile {
 
             @Override
             public Cls getParent() {
-                return Cls.this;
+                return parent;
             }
 
-            class Parameter extends Node implements IParameter {
+            static class Parameter extends Node implements IParameter {
                 private final int index;
+                private final Method parent;
 
-                protected Parameter(int index, String original, String mapped, Map<String, String> metadata) {
+                Parameter(Method parent, int index, String original, String mapped, Map<String, String> metadata) {
                     super(original, mapped, metadata);
                     this.index = index;
+                    this.parent = parent;
                 }
 
                 @Override
                 public IMethod getParent() {
-                    return Method.this;
+                    return parent;
                 }
 
                 @Override
@@ -573,7 +585,6 @@ class MappingFile implements IMappingFile {
                             throw new UnsupportedOperationException("Unknown format: " + format);
                     }
                 }
-
             }
         }
     }
