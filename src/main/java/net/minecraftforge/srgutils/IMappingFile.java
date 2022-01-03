@@ -64,11 +64,16 @@ public interface IMappingFile {
 
     Collection<? extends IPackage> getPackages();
 
+    @Nullable
     IPackage getPackage(String original);
 
     Collection<? extends IClass> getClasses();
 
+    @Nullable
     IClass getClass(String original);
+
+    @Nullable
+    IClass getMappedClass(String mapped);
 
     String remapPackage(String pkg);
 
@@ -169,7 +174,13 @@ public interface IMappingFile {
         IField getField(String name);
 
         @Nullable
+        IField getMappedField(String name);
+
+        @Nullable
         IMethod getMethod(String name, String desc);
+
+        @Nullable
+        IMethod getMappedMethod(String name, String desc);
     }
 
     interface IField extends IOwnedNode<IClass> {

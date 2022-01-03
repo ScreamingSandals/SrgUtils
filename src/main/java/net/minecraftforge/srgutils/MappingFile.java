@@ -62,12 +62,11 @@ class MappingFile implements IMappingFile {
 
     @Override
     public Collection<Package> getPackages() {
-        return this.packagesView;
+        return packagesView;
     }
 
     @Override
-    @Nullable
-    public Package getPackage(String original) {
+    public @Nullable Package getPackage(String original) {
         return packages.get(original);
     }
 
@@ -77,17 +76,21 @@ class MappingFile implements IMappingFile {
 
     @Override
     public Collection<Cls> getClasses() {
-        return this.classesView;
+        return classesView;
     }
 
     @Override
-    @Nullable
-    public Cls getClass(String original) {
+    public @Nullable Cls getClass(String original) {
         return classes.get(original);
     }
 
+    @Override
+    public @Nullable IClass getMappedClass(String mapped) {
+        return classesView.stream().filter(cls -> cls.getMapped().equals(mapped)).findFirst().orElse(null);
+    }
+
     private Cls addClass(String original, String mapped, Map<String, String> metadata) {
-        return retPut(this.classes, original, new Cls(this, original, mapped, metadata));
+        return retPut(classes, original, new Cls(this, original, mapped, metadata));
     }
 
     @Override
@@ -247,22 +250,22 @@ class MappingFile implements IMappingFile {
         Node(String original, String mapped, Map<String, String> metadata) {
             this.original = original;
             this.mapped = mapped;
-            this.metadata = metadata.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(metadata);
+            this.metadata = Collections.unmodifiableMap(metadata);
         }
 
         @Override
         public String getOriginal() {
-            return this.original;
+            return original;
         }
 
         @Override
         public String getMapped() {
-            return this.mapped;
+            return mapped;
         }
 
         @Override
         public Map<String, String> getMetadata() {
-            return this.metadata;
+            return metadata;
         }
     }
 
@@ -275,8 +278,7 @@ class MappingFile implements IMappingFile {
         }
 
         @Override
-        @Nullable
-        public String write(Format format, boolean reversed) {
+        public @Nullable String write(Format format, boolean reversed) {
             String sorig = getOriginal().isEmpty() ? "." : getOriginal();
             String smap = getMapped().isEmpty() ? "." : getMapped();
 
@@ -304,7 +306,7 @@ class MappingFile implements IMappingFile {
 
         @Override
         public String toString() {
-            return this.write(Format.SRG, false);
+            return write(Format.SRG, false);
         }
 
         @Override
@@ -326,8 +328,7 @@ class MappingFile implements IMappingFile {
         }
 
         @Override
-        @Nullable
-        public String write(Format format, boolean reversed) {
+        public @Nullable String write(Format format, boolean reversed) {
             String oName = !reversed ? getOriginal() : getMapped();
             String mName = !reversed ? getMapped() : getOriginal();
             switch (format) {
@@ -351,13 +352,17 @@ class MappingFile implements IMappingFile {
 
         @Override
         public Collection<Field> getFields() {
-            return this.fieldsView;
+            return fieldsView;
         }
 
         @Override
-        @Nullable
-        public IField getField(String name) {
-            return this.fields.get(name);
+        public @Nullable IField getField(String name) {
+            return fields.get(name);
+        }
+
+        @Override
+        public @Nullable IField getMappedField(String name) {
+            return fieldsView.stream().filter(field -> field.getMapped().equals(name)).findFirst().orElse(null);
         }
 
         @Override
@@ -367,22 +372,29 @@ class MappingFile implements IMappingFile {
         }
 
         private Field addField(String original, String mapped, String desc, Map<String, String> metadata) {
-            return retPut(this.fields, original, new Field(this, original, mapped, desc, metadata));
+            return retPut(fields, original, new Field(this, original, mapped, desc, metadata));
         }
 
         @Override
         public Collection<Method> getMethods() {
-            return this.methodsView;
+            return methodsView;
         }
 
         @Override
-        @Nullable
-        public IMethod getMethod(String name, String desc) {
-            return this.methods.get(name + desc);
+        public @Nullable IMethod getMethod(String name, String desc) {
+            return methods.get(name + desc);
+        }
+
+        @Override
+        public @Nullable IMethod getMappedMethod(String name, String desc) {
+            return methodsView.stream()
+                    .filter(method -> method.getMapped().equals(name) && method.getMappedDescriptor().equals(desc))
+                    .findFirst()
+                    .orElse(null);
         }
 
         private Method addMethod(String original, String desc, String mapped, Map<String, String> metadata) {
-            return retPut(this.methods, original + desc, new Method(this, original, desc, mapped, metadata));
+            return retPut(methods, original + desc, new Method(this, original, desc, mapped, metadata));
         }
 
         @Override
@@ -393,7 +405,7 @@ class MappingFile implements IMappingFile {
 
         @Override
         public String toString() {
-            return this.write(Format.SRG, false);
+            return write(Format.SRG, false);
         }
 
         @Override
@@ -418,21 +430,20 @@ class MappingFile implements IMappingFile {
 
             @Override
             public String getMappedDescriptor() {
-                return this.desc == null ? null : getParent().getParent().remapDescriptor(this.desc);
+                return desc == null ? null : getParent().getParent().remapDescriptor(desc);
             }
 
             @Override
-            @Nullable
-            public String write(Format format, boolean reversed) {
-                if (format != Format.TSRG2 && format.hasFieldTypes() && this.desc == null)
+            public @Nullable String write(Format format, boolean reversed) {
+                if (format != Format.TSRG2 && format.hasFieldTypes() && desc == null)
                     throw new IllegalStateException("Can not write " + format.name() + " format, field is missing descriptor");
 
                 String oOwner = !reversed ? getParent().getOriginal() : getParent().getMapped();
                 String mOwner = !reversed ? getParent().getMapped() : getParent().getOriginal();
-                String oName = !reversed ? this.getOriginal() : this.getMapped();
-                String mName = !reversed ? this.getMapped() : this.getOriginal();
-                String oDesc = !reversed ? this.getDescriptor() : this.getMappedDescriptor();
-                String mDesc = !reversed ? this.getMappedDescriptor() : this.getDescriptor();
+                String oName = !reversed ? getOriginal() : getMapped();
+                String mName = !reversed ? getMapped() : getOriginal();
+                String oDesc = !reversed ? getDescriptor() : getMappedDescriptor();
+                String mDesc = !reversed ? getMappedDescriptor() : getDescriptor();
 
                 switch (format) {
                     case SRG:
@@ -458,7 +469,7 @@ class MappingFile implements IMappingFile {
 
             @Override
             public String toString() {
-                return this.write(Format.SRG, false);
+                return write(Format.SRG, false);
             }
 
             @Override
@@ -481,26 +492,26 @@ class MappingFile implements IMappingFile {
 
             @Override
             public String getDescriptor() {
-                return this.desc;
+                return desc;
             }
 
             @Override
             public String getMappedDescriptor() {
-                return getParent().getParent().remapDescriptor(this.desc);
+                return getParent().getParent().remapDescriptor(desc);
             }
 
             @Override
             public Collection<Parameter> getParameters() {
-                return this.paramsView;
+                return paramsView;
             }
 
             private Parameter addParameter(int index, String original, String mapped, Map<String, String> metadata) {
-                return retPut(this.params, index, new Parameter(this, index, original, mapped, metadata));
+                return retPut(params, index, new Parameter(this, index, original, mapped, metadata));
             }
 
             @Override
             public String remapParameter(int index, String name) {
-                Parameter param = this.params.get(index);
+                Parameter param = params.get(index);
                 return param == null ? name : param.getMapped();
             }
 
@@ -537,7 +548,7 @@ class MappingFile implements IMappingFile {
 
             @Override
             public String toString() {
-                return this.write(Format.SRG, false);
+                return write(Format.SRG, false);
             }
 
             @Override
@@ -562,7 +573,7 @@ class MappingFile implements IMappingFile {
 
                 @Override
                 public int getIndex() {
-                    return this.index;
+                    return index;
                 }
 
                 @Override

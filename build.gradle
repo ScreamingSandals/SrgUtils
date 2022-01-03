@@ -21,7 +21,7 @@ group 'net.minecraftforge'
 // version = gradleutils.getTagOffsetVersion()
 version = '0.4.11-SNAPSHOT'
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(8)
+// java.toolchain.languageVersion = JavaLanguageVersion.of(8)
 
 ext {
     CHANGELOG = rootProject.file('build/changelog.txt')
@@ -52,7 +52,7 @@ dependencies {
 }
 
 task sourcesJar(type: Jar) {
-    archiveClassifier = 'sources'
+    archiveClassifier.set('sources')
     from sourceSets.main.allSource
 }
 

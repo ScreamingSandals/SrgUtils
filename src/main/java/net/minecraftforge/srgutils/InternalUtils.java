@@ -682,7 +682,11 @@ class InternalUtils {
         }
     }
 
-    enum TinyV2State {ROOT, CLASS, FIELD, METHOD, PARAMETER}
+    enum TinyV2State {
+        ROOT, CLASS, FIELD, METHOD, PARAMETER
+    }
 
-    enum Element {PACKAGE, CLASS, FIELD, METHOD, PARAMETER}
+    enum Element {
+        PACKAGE, CLASS, FIELD, METHOD, PARAMETER
+    }
 }
