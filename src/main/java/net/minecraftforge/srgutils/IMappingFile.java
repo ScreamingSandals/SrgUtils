@@ -150,7 +150,7 @@ public interface IMappingFile {
     IMappingFile chain(IMappingFile other);
 
     /**
-     * Chain this mapping file with another.
+     * Merge this mapping file with another one.
      * The merge strategy used for chaining is as follows:
      * <p>
      * A->B ("ours") and B->C ("theirs") becomes A->C. Mappings present in only ours are preserved,
