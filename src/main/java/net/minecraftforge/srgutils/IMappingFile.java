@@ -62,32 +62,105 @@ public interface IMappingFile {
         return load(String.join("\n", mappingFile));
     }
 
+    /**
+     * Gets all packages contained in this mapping file.
+     *
+     * @return all packages
+     */
     Collection<? extends IPackage> getPackages();
 
+    /**
+     * Gets a package contained in this mapping file by its original name.
+     *
+     * @param original the original package name
+     * @return the package, null if not found
+     */
     @Nullable
     IPackage getPackage(String original);
 
+    /**
+     * Gets all classes contained in this mapping file.
+     *
+     * @return all classes
+     */
     Collection<? extends IClass> getClasses();
 
+    /**
+     * Gets a class contained in this mapping file by its original name.
+     *
+     * @param original the original class name
+     * @return the class, null if not found
+     */
     @Nullable
     IClass getClass(String original);
 
+    /**
+     * Gets a class contained in this mapping file by its mapped name.
+     *
+     * @param mapped the mapped class name
+     * @return the class, null if not found
+     */
     @Nullable
     IClass getMappedClass(String mapped);
 
+    /**
+     * Remaps an original package name to its mapping.
+     *
+     * @param pkg the original package name
+     * @return the remapped package name
+     */
     String remapPackage(String pkg);
 
+    /**
+     * Remaps an original class name to its mapping.
+     *
+     * @param desc the original class name
+     * @return the remapped class name
+     */
     String remapClass(String desc);
 
+    /**
+     * Remaps an original descriptor to its mapping.
+     *
+     * @param desc the original descriptor
+     * @return the remapped descriptor
+     */
     String remapDescriptor(String desc);
 
+    /**
+     * Writes this mapping file to a file with the specified {@link Format}.
+     *
+     * @param path the path
+     * @param format the mapping file format
+     * @param reversed should the written mapping file be reversed?
+     * @throws IOException when an IO error occurs
+     */
     void write(Path path, Format format, boolean reversed) throws IOException;
 
+    /**
+     * Reverses this mapping file.
+     * The reversing strategy is simply that A->B becomes B->A.
+     *
+     * @return the reversed {@link IMappingFile}
+     */
     IMappingFile reverse();
 
     IMappingFile rename(IRenamer renamer);
 
     IMappingFile chain(IMappingFile other);
+
+    /**
+     * Chain this mapping file with another.
+     * The merge strategy used for chaining is as follows:
+     * <p>
+     * A->B ("ours") and B->C ("theirs") becomes A->C. Mappings present in only ours are preserved,
+     * but mappings present only in theirs are dropped, except for parameters, which are preserved for all method mappings
+     * that were present in ours.
+     * Conflicts in metadata are resolved by overwriting with the B->C metadata.
+     *
+     * @return the merged {@link IMappingFile}
+     */
+    IMappingFile merge(IMappingFile other);
 
     enum Format {
         SRG(false, false, false),
@@ -139,7 +212,7 @@ public interface IMappingFile {
         String write(Format format, boolean reversed);
 
         /*
-         * A unmodifiable map of various metadata that is attached to this node.
+         * An unmodifiable map of various metadata that is attached to this node.
          * This is very dependent on the format. Some examples:
          * Tiny v1/v2:
          *   "comment": Javadoc comment to insert into source
