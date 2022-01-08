@@ -39,6 +39,7 @@ class MappingFile implements IMappingFile {
     private final Map<String, Cls> classes = new HashMap<>();
     private final Collection<Cls> classesView = Collections.unmodifiableCollection(classes.values());
     private final Map<String, String> cache = new ConcurrentHashMap<>();
+    private IMappingFile reversedView = null;
 
     MappingFile() {
     }
@@ -53,6 +54,13 @@ class MappingFile implements IMappingFile {
                 mtd.getParameters().forEach(par -> m.addParameter(par.getIndex(), par.getName(from), par.getName(to), par.meta));
             });
         });
+    }
+
+    private IMappingFile ensureReversedView() {
+        if (reversedView == null) {
+            reversedView = reverse();
+        }
+        return reversedView;
     }
 
     private static <K, V> V retPut(Map<K, V> map, K key, V value) {
@@ -86,7 +94,7 @@ class MappingFile implements IMappingFile {
 
     @Override
     public @Nullable IClass getMappedClass(String mapped) {
-        return classesView.stream().filter(cls -> cls.getMapped().equals(mapped)).findFirst().orElse(null);
+        return ensureReversedView().getClass(mapped);
     }
 
     private Cls addClass(String original, String mapped, Map<String, String> metadata) {
