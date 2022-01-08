@@ -352,6 +352,17 @@ class MappingFile implements IMappingFile {
         return builder.build().getMap("left", "right");
     }
 
+    @Override
+    public Map<String, String> diff(IMappingFile other, boolean diffThis) {
+        final Map<String, String> missingClasses = new HashMap<>();
+        (diffThis ? classesView : other.getClasses()).forEach(cls -> {
+            if ((diffThis ? other : this).getClass(cls.getOriginal()) == null) {
+                missingClasses.put(cls.getOriginal(), cls.getMapped());
+            }
+        });
+        return missingClasses;
+    }
+
     abstract static class Node implements INode {
         private final String original;
         private final String mapped;
@@ -501,6 +512,28 @@ class MappingFile implements IMappingFile {
                     .filter(method -> method.getMapped().equals(name) && method.getMappedDescriptor().equals(desc))
                     .findFirst()
                     .orElse(null);
+        }
+
+        @Override
+        public Map<String, String> diffMethods(IClass other, boolean diffThis) {
+            final Map<String, String> missingMethods = new HashMap<>();
+            (diffThis ? methodsView : other.getMethods()).forEach(method -> {
+                if ((diffThis ? other : this).getMethod(method.getOriginal(), method.getDescriptor()) == null) {
+                    missingMethods.put(method.getOriginal(), method.getMapped());
+                }
+            });
+            return missingMethods;
+        }
+
+        @Override
+        public Map<String, String> diffFields(IClass other, boolean diffThis) {
+            final Map<String, String> missingFields = new HashMap<>();
+            (diffThis ? fieldsView : other.getFields()).forEach(field -> {
+                if ((diffThis ? other : this).getField(field.getOriginal()) == null) {
+                    missingFields.put(field.getOriginal(), field.getMapped());
+                }
+            });
+            return missingFields;
         }
 
         private Method addMethod(String original, String desc, String mapped, Map<String, String> metadata) {

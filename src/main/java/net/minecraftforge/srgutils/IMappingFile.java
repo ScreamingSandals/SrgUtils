@@ -151,6 +151,7 @@ public interface IMappingFile {
 
     /**
      * Merge this mapping file with another one.
+     * <p>
      * The merge strategy used for chaining is as follows:
      * <p>
      * A->B ("ours") and B->C ("theirs") becomes A->C. Mappings present in only ours are preserved,
@@ -158,9 +159,31 @@ public interface IMappingFile {
      * that were present in ours.
      * Conflicts in metadata are resolved by overwriting with the B->C metadata.
      *
+     * @param other the other mapping file
      * @return the merged {@link IMappingFile}
      */
     IMappingFile merge(IMappingFile other);
+
+    /**
+     * Computes a class name diff between this mapping file and another one.
+     * <p>
+     * The behavior of this method can be changed with the 'diffThis' parameter:
+     * <ul>
+     *     <li>
+     *         If true, the returned map consists of the A->B mappings
+     *         from <strong>this</strong> mapping file which were not found in <strong>the other</strong> mapping file.
+     *     </li>
+     *     <li>
+     *         If false, the returned map consists of the A->B mappings
+     *         from <strong>the other</strong> mapping file which were not found in <strong>this</strong> mapping file.
+     *     </li>
+     * </ul>
+     *
+     * @param other the other mapping file
+     * @param diffThis the diff setting
+     * @return the diff
+     */
+    Map<String, String> diff(IMappingFile other, boolean diffThis);
 
     enum Format {
         SRG(false, false, false),
@@ -254,6 +277,48 @@ public interface IMappingFile {
 
         @Nullable
         IMethod getMappedMethod(String name, String desc);
+
+        /**
+         * Computes a method name diff between this mapping file and another one.
+         * <p>
+         * The behavior of this method can be changed with the 'diffThis' parameter:
+         * <ul>
+         *     <li>
+         *         If true, the returned map consists of the A->B mappings
+         *         from <strong>this</strong> class mapping which were not found in <strong>the other</strong> class mapping.
+         *     </li>
+         *     <li>
+         *         If false, the returned map consists of the A->B mappings
+         *         from <strong>the other</strong> class mapping which were not found in <strong>this</strong> class mapping.
+         *     </li>
+         * </ul>
+         *
+         * @param other the other mapping file
+         * @param diffThis the diff setting
+         * @return the diff
+         */
+        Map<String, String> diffMethods(IClass other, boolean diffThis);
+
+        /**
+         * Computes a field name diff between this mapping file and another one.
+         * <p>
+         * The behavior of this method can be changed with the 'diffThis' parameter:
+         * <ul>
+         *     <li>
+         *         If true, the returned map consists of the A->B mappings
+         *         from <strong>this</strong> class mapping which were not found in <strong>the other</strong> class mapping.
+         *     </li>
+         *     <li>
+         *         If false, the returned map consists of the A->B mappings
+         *         from <strong>the other</strong> class mapping which were not found in <strong>this</strong> class mapping.
+         *     </li>
+         * </ul>
+         *
+         * @param other the other mapping file
+         * @param diffThis the diff setting
+         * @return the diff
+         */
+        Map<String, String> diffFields(IClass other, boolean diffThis);
     }
 
     interface IField extends IOwnedNode<IClass> {
