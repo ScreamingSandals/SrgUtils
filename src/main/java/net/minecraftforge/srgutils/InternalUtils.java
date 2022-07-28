@@ -420,8 +420,17 @@ class InternalUtils {
             switch (parts[0]) {
                 case "c":
                     if (stack.size() == 0) { // Class: c Name1 Name2 Name3
-                        if (parts.length != nameCount + 1)
-                            throw new IOException("Invalid Tiny v2 line: #" + x + ": " + line);
+                        if (parts.length != nameCount + 1) {
+                            if (parts.length == nameCount) { // Fix for 1.19.1 yarn
+                                var newArray = new String[nameCount + 1];
+                                System.arraycopy(parts, 0, newArray, 0, parts.length);
+                                newArray[newArray.length - 1] = newArray[newArray.length - 2];
+                                parts = newArray;
+                                System.out.println("WARN: Class without mapping: " + line + ", copying the original name...");
+                            } else {
+                                throw new IOException("Invalid Tiny v2 line: #" + x + ": " + line);
+                            }
+                        }
 
                         cls = ret.addClass(Arrays.copyOfRange(parts, 1, parts.length));
                         stack.push(TinyV2State.CLASS);
